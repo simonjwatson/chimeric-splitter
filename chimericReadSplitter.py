@@ -26,7 +26,7 @@ def blast_reads(blast_string, reads, outfh, outExtra):
 	blast_db = '/Users/sw10/Dropbox/Sanger/blastdb/ebola/Zaire_ebolavirus_KM034562' # 2)
 	blast_binary = '/Applications/ncbi-blast-2.2.29+/bin/blastn' # 3)
 	xml_outfile = '/tmp/test.xml'
-	evalue = 0.01 
+	evalue = 0.001
 	cline = NcbiblastnCommandline(cmd=blast_binary, out=xml_outfile, outfmt=5, query="-", db=blast_db, evalue=evalue, max_target_seqs=1, num_threads=1)
 	stdout, stderr = cline(blast_string)
 
@@ -50,12 +50,13 @@ def blast_reads(blast_string, reads, outfh, outExtra):
 					header = '%s:%d' % (name, count)
 					hits[header] = (seq, qual)
 					count += 1
-			for head, seq_tuple in sorted(hits, key=lambda head: len(hits[head][0]), reverse=True):
+			for head in sorted(hits.keys(), key=lambda x: len(hits[x][0]), reverse=True):
+				seq_tuple = hits[head]
 				if top_hitBool == True:
-					outfh.write("@%s\n%s+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
+					outfh.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
 					top_hitBool = False
 				else:
-					outExtra.write("@%s\n%s+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
+					outExtra.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
 				
 	os.remove(xml_outfile)
 
@@ -77,21 +78,23 @@ outfileR2 = "%s.2b.fq" % outprefix
 counter = 0
 readsF = {}
 readsR = {}
-blast_string = ''
+blast_stringF = ''
+blast_stringR = ''
 with open(infile, 'r') as infh, open(pairfile, 'r') as revfh, open(outfileF1, 'w') as outf1, open(outfileR1, 'w') as outr1, open(outfileF2, 'w') as outf2, open(outfileR2, 'w') as outr2:
 	reverse_reads = fastq.fastq_iterator(revfh)
 	for headerF, sequenceF, qualityF in fastq.fastq_iterator(infh):
 		headerR, sequenceR, qualityR = next(reverse_reads)
 		blast_stringF += '>%s\n%s\n' % (headerF, sequenceF)
 		blast_stringR += '>%s\n%s\n' % (headerR, sequenceR)
-		readsF[header] = fastq.FastqRecord(headerF, sequenceF, qualityF)
-		readsR[header] = fastq.FastqRecord(headerR, sequenceR, qualityR)
+		readsF[headerF] = fastq.FastqRecord(headerF, sequenceF, qualityF)
+		readsR[headerR] = fastq.FastqRecord(headerR, sequenceR, qualityR)
 		counter += 1
 		if counter == max_at_once:
 			blast_reads(blast_stringF, readsF, outf1, outf2)
 			blast_reads(blast_stringR, readsR, outr1, outr2)
 			counter = 0
 			reads = {}
-			blast_string = ''
+			blast_stringF = ''
+			blast_stringR = ''
 	blast_reads(blast_stringF, readsF, outf1, outf2)
 	blast_reads(blast_stringR, readsR, outr1, outr2)
