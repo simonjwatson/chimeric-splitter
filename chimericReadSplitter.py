@@ -50,13 +50,15 @@ def blast_reads(blast_string, reads, outfh, outExtra):
 					header = '%s:%d' % (name, count)
 					hits[header] = (seq, qual)
 					count += 1
-			for head in sorted(hits.keys(), key=lambda x: len(hits[x][0]), reverse=True):
-				seq_tuple = hits[head]
-				if top_hitBool == True:
-					outfh.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
-					top_hitBool = False
-				else:
-					outExtra.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
+					
+				for head in sorted(hits.keys(), key=lambda x: len(hits[x][0]), reverse=True):
+					seq_tuple = hits[head]
+					if top_hitBool == True:
+						outfh.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
+						top_hitBool = False
+					else:
+						outExtra.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
+				break # we only want the first alignment
 				
 	os.remove(xml_outfile)
 
