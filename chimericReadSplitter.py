@@ -1,20 +1,11 @@
 #! /usr/bin/python
 
 # Written by Simon Watson and Matt Cotten, Wellcome Trust Sanger Institute
+# To use this script, change the following strings to point to your installs:
 #
-# Takes a pair of read files in FASTQ format, and BLASTs them against
-# a BLAST database. Any chimeric reads are split, with the larger fragment
-# kept in the file and the second framgment placed in a separate file (to
-# keep the numbers in forward and reverse the same)
-#
-# "num_to_parse" changes the number of reads that are BLASTed together. Lower
-# to reduce memory consumption.
-#
-# To use this script, you need the following:
-# 1) FASTQ module from QUASR: https://github.com/simonjwatson/QUASR
-# 2) A BLAST database to BLAST the reads against
-# 3) The BLASTN binary
-
+# 1) Location of QUASR Python modules folder (QUASR can be downloaded from https://github.com/simonjwatson/QUASR)
+# 2) Location of BLAST database file stem
+# 3) Location of BLASTN binary
 
 import sys, os
 sys.path.append('/Users/sw10/Dropbox/Sanger/QUASR/QUASR_v6.09/modules/') # 1)
@@ -22,11 +13,11 @@ import fastq
 from Bio.Blast.Applications import NcbiblastnCommandline
 from Bio.Blast import NCBIXML
 
-def blast_reads(blast_string, reads, outfh, outExtra):
+def blast_reads(blast_string, reads, outfh):
 	blast_db = '/Users/sw10/Dropbox/Sanger/blastdb/ebola/Zaire_ebolavirus_KM034562' # 2)
 	blast_binary = '/Applications/ncbi-blast-2.2.29+/bin/blastn' # 3)
 	xml_outfile = '/tmp/test.xml'
-	evalue = 0.001
+	evalue = 0.01 
 	cline = NcbiblastnCommandline(cmd=blast_binary, out=xml_outfile, outfmt=5, query="-", db=blast_db, evalue=evalue, max_target_seqs=1, num_threads=1)
 	stdout, stderr = cline(blast_string)
 
@@ -36,8 +27,6 @@ def blast_reads(blast_string, reads, outfh, outExtra):
 			name = blast_record.query
 			for alignment in blast_record.alignments:
 				count = 1
-				hits = {}
-				top_hitBool = True
 				for hsp in alignment.hsps:
 					seq = reads[name].sequence[hsp.query_start:hsp.query_end]
 					qual = reads[name].quality[hsp.query_start:hsp.query_end]
@@ -47,56 +36,30 @@ def blast_reads(blast_string, reads, outfh, outExtra):
 						tmp2 = [qual[i] for i in range(len(qual)-1,-1,-1)]
 						qual = ''.join(tmp2)
 		
-					header = '%s:%d' % (name, count)
-					hits[header] = (seq, qual)
+					outfh.write('@%s:%d\n%s\n+\n%s\n' % (name, count, seq, qual))
 					count += 1
-					
-				for head in sorted(hits.keys(), key=lambda x: len(hits[x][0]), reverse=True):
-					seq_tuple = hits[head]
-					if top_hitBool == True:
-						outfh.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
-						top_hitBool = False
-					else:
-						outExtra.write("@%s\n%s\n+\n%s\n" % (head, seq_tuple[0], seq_tuple[1]))
-				break # we only want the first alignment
-				
 	os.remove(xml_outfile)
 
 
-if len(sys.argv) != 5:
-	print('chimericReadSplitter.py <forward.fq> <reverse.fq> <outfile.fq> <num_to_parse>')
+if len(sys.argv) != 4:
+	print('split_chimeric_reads.py <infile.fq> <outfile.fq> <num_to_parse>')
 	sys.exit(0)
 
 infile = sys.argv[1]
-pairfile = sys.argv[2]
-outprefix = sys.argv[3]
-max_at_once = int(sys.argv[4])
-
-outfileF1 = "%s.1.fq" % outprefix
-outfileR1 = "%s.2.fq" % outprefix
-outfileF2 = "%s.1b.fq" % outprefix
-outfileR2 = "%s.2b.fq" % outprefix
+outfile = sys.argv[2]
+max_at_once = int(sys.argv[3])
 
 counter = 0
-readsF = {}
-readsR = {}
-blast_stringF = ''
-blast_stringR = ''
-with open(infile, 'r') as infh, open(pairfile, 'r') as revfh, open(outfileF1, 'w') as outf1, open(outfileR1, 'w') as outr1, open(outfileF2, 'w') as outf2, open(outfileR2, 'w') as outr2:
-	reverse_reads = fastq.fastq_iterator(revfh)
-	for headerF, sequenceF, qualityF in fastq.fastq_iterator(infh):
-		headerR, sequenceR, qualityR = next(reverse_reads)
-		blast_stringF += '>%s\n%s\n' % (headerF, sequenceF)
-		blast_stringR += '>%s\n%s\n' % (headerR, sequenceR)
-		readsF[headerF] = fastq.FastqRecord(headerF, sequenceF, qualityF)
-		readsR[headerR] = fastq.FastqRecord(headerR, sequenceR, qualityR)
+reads = {}
+blast_string = ''
+with open(infile, 'r') as infh, open(outfile, 'w') as outfh:
+	for header, sequence, quality in fastq.fastq_iterator(infh):
+		blast_string += '>%s\n%s\n' % (header, sequence)
+		reads[header] = fastq.FastqRecord(header, sequence, quality)
 		counter += 1
 		if counter == max_at_once:
-			blast_reads(blast_stringF, readsF, outf1, outf2)
-			blast_reads(blast_stringR, readsR, outr1, outr2)
+			blast_reads(blast_string, reads, outfh)
 			counter = 0
 			reads = {}
-			blast_stringF = ''
-			blast_stringR = ''
-	blast_reads(blast_stringF, readsF, outf1, outf2)
-	blast_reads(blast_stringR, readsR, outr1, outr2)
+			blast_string = ''
+	blast_reads(blast_string, reads, outfh)
